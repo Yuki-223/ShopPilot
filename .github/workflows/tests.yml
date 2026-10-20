@@ -13,4 +13,7 @@ jobs:
           node-version: '24'
       - run: pip install -r requirements.lock.txt
       - run: python -m pytest tests -q
-      - run: node --check web/app.js
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright-core install --with-deps chromium
+      - run: python -m scripts.browser_smoke

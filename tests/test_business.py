@@ -129,3 +129,124 @@ def test_external_cannot_checkout(setup):
     c=setup;login(c,role='admin')
     pid=c.post('/api/admin/products',json={'title':'外部候选','category':'数码电子','price_cents':1000,'stock':20,'source':'external'}).json()['id']
     assert c.put('/api/cart/'+pid,json={'quantity':1}).status_code==400
+
+def test_categories_rename_and_nonempty_delete(setup):
+    c=setup; login(c,role='admin')
+    assert c.post('/api/admin/categories',json={'name':'空分类'}).status_code==201
+    assert c.post('/api/admin/categories',json={'name':'空分类'}).status_code==409
+    assert c.delete('/api/admin/categories/空分类').status_code==200
+    assert c.delete('/api/admin/categories/营养保健').status_code==409
+    assert c.put('/api/admin/categories/营养保健',json={'name':'营养补充'}).status_code==200
+    assert c.get('/api/products/demo-001').json()['category']=='营养补充'
+    assert '营养保健' not in c.get('/api/categories').json()
+    assert c.put('/api/admin/categories/营养补充',json={'name':'数码电子'}).status_code==409
+
+def test_user_disable_revokes_session_and_protects_admin(setup):
+    c=setup; alice=login(c)
+    token=c.cookies.get('shop_session'); c.post('/api/auth/logout')
+    # Make a second valid Alice session before switching to admin.
+    c.post('/api/auth/login',json={'username':'alice','password':'Test-password-123'})
+    token=c.cookies.get('shop_session');c.cookies.clear()
+    boss=login(c,'boss',role='admin')
+    assert c.put('/api/admin/users/'+alice['id']+'/status',json={'active':False}).status_code==200
+    other=TestClient(mod.app);other.cookies.set('shop_session',token)
+    assert other.get('/api/auth/me').status_code==401
+    assert c.put('/api/admin/users/'+boss['id']+'/status',json={'active':False}).status_code==409
+    assert c.put('/api/admin/users/'+alice['id']+'/status',json={'active':True}).status_code==200
+    assert other.get('/api/auth/me').status_code==401  # old session stays revoked
+    assert c.get('/api/admin/users?q=alice').json()['items'][0]['active']==1
+
+def test_feedback_visibility_and_resolution(setup):
+    c=setup;login(c)
+    r=c.post('/api/feedback',json={'product_id':'demo-001','content':'请核实该商品标签配料信息'})
+    assert r.status_code==201; fid=r.json()['id']
+    assert c.get('/api/admin/feedback').status_code==403
+    c.cookies.clear();login(c,'bob')
+    assert c.get('/api/feedback').json()==[]
+    c.cookies.clear();login(c,'boss',role='admin')
+    assert c.get('/api/admin/feedback').json()['total']==1
+    assert c.put('/api/admin/feedback/'+fid,json={'status':'resolved','reply':'已核查并补充资料来源'}).status_code==200
+    c.cookies.clear();c.post('/api/auth/login',json={'username':'alice','password':'Test-password-123'})
+    own=c.get('/api/feedback').json()[0]
+    assert own['status']=='resolved' and own['reply']=='已核查并补充资料来源'
+
+def test_comparison_dose_cost_and_unknown(setup):
+    c=setup;login(c)
+    r=c.post('/api/compare',json={'product_ids':['demo-001','demo-002','demo-003']})
+    assert r.status_code==200
+    row=next(x for x in r.json()['rows'] if x['attribute']=='每克标签VC成本（元）')
+    assert row['values']==['1.1333','1.4833','2.6222']
+    ingredients=next(x for x in r.json()['rows'] if x['attribute']=='配料资料')
+    assert '未知' in ingredients['values'][2]
+    assert c.post('/api/compare',json={'product_ids':['demo-001','demo-001']}).status_code==422
+
+def test_remove_profile_conditions_and_preserve_selected_products(setup):
+    c=setup;login(c)
+    pid=c.get('/api/profiles').json()[0]['id']
+    c.put('/api/profiles/'+pid,json={'name':'我','preferences':{'max_price_cents':6000,'exclude':['滑石粉']}})
+    r=c.post('/api/chat',json={'query':'推荐VC','profile_id':pid}).json()
+    assert r['products']==[]
+    r=c.post('/api/chat',json={'query':'去掉预算','conversation_id':r['conversation_id'],'profile_id':pid,'drop_conditions':['budget']}).json()
+    assert [x['id'] for x in r['products']]==['demo-001']
+    r=c.post('/api/chat',json={'query':'移除这项排除条件','conversation_id':r['conversation_id'],'profile_id':pid,'drop_conditions':['exclude:滑石粉']}).json()
+    assert {x['id'] for x in r['products']}=={'demo-001','demo-002','demo-003'}
+    assert c.get('/api/profiles').json()[0]['preferences']['max_price_cents']==6000
+    r=c.post('/api/chat',json={'query':'比较','product_ids':['demo-009','demo-011']}).json()
+    assert len(r['products'])==2 and r['comparison'] is not None
+    r=c.post('/api/chat',json={'query':'再说说','conversation_id':r['conversation_id']}).json()
+    assert {x['id'] for x in r['products']}=={'demo-009','demo-011'}
+
+def test_category_switch_and_chat_delete(setup):
+    c=setup;login(c)
+    r=c.post('/api/chat',json={'query':'推荐VC'}).json()
+    r=c.post('/api/chat',json={'query':'换成耳机','conversation_id':r['conversation_id']}).json()
+    assert [x['id'] for x in r['products']]==['demo-005']
+    assert c.delete('/api/chats/'+r['conversation_id']).status_code==200
+    assert c.get('/api/chats').json()==[]
+
+def test_import_dedup_does_not_overwrite_curated_product(setup):
+    c=setup;login(c,role='admin')
+    p={'title':'导入商品','category':'测试','price_cents':1000,'source':'external','source_url':'https://example.com/product/1'}
+    assert c.post('/api/admin/import',json={'products':[p,p]}).json()=={'imported':1,'duplicates':1}
+    items=c.get('/api/admin/products?q=导入商品').json()['items']
+    assert len(items)==1
+    pid=items[0]['id'];c.put('/api/admin/products/'+pid,json={**p,'title':'管理员核实名称'})
+    assert c.post('/api/admin/import',json={'products':[p]}).json()=={'imported':0,'duplicates':1}
+    assert c.get('/api/products/'+pid).json()['title']=='管理员核实名称'
+
+def test_admin_product_pagination_and_foreign_currency(setup):
+    c=setup;login(c,role='admin')
+    d=c.get('/api/admin/products?limit=5&page=2').json()
+    assert d['total']==24 and len(d['items'])==5
+    p={'title':'美元商品','category':'测试','price_cents':1000,'specs':{'currency':'USD'},'status':'active'}
+    assert c.post('/api/admin/products',json=p).status_code==422
+    p['status']='inactive'
+    assert c.post('/api/admin/products',json=p).status_code==201
+
+
+def test_dataset_conversion_and_cli_dedup(setup,tmp_path,monkeypatch,capsys):
+    from backend.importing import convert_record
+    from scripts.manage import main
+    p,key=convert_record({'id':123,'title':'Sample phone','price':12.345,'category':'smartphones','images':['https://example.com/p.jpg']},'dummyjson')
+    assert p.price_cents==1235 and p.specs['currency']=='USD' and p.status=='inactive' and key=='123'
+    assert convert_record({'price':'NaN'},'amazon2023')==(None,None)
+    path=tmp_path/'data.json';path.write_text(json.dumps({'products':[{'id':123,'title':'Phone','price':10,'category':'smartphones'}]}))
+    monkeypatch.setattr('sys.argv',['manage','import',str(path),'--format','dummyjson']);main();main()
+    with mod.db() as db:
+        assert db.execute("SELECT COUNT(*) FROM products WHERE source='dummyjson'").fetchone()[0]==1
+
+
+def test_model_malformed_response_falls_back(setup,monkeypatch):
+    c=setup;login(c)
+    monkeypatch.setenv('LLM_API_KEY','test-not-real');monkeypatch.setenv('LLM_MODEL','fake')
+    class FakeClient:
+        def __init__(self,**kwargs): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self,*args): pass
+        async def post(self,*args,**kwargs):
+            import httpx
+            return httpx.Response(200,content=b'not json',request=httpx.Request('POST','https://example.test'))
+    monkeypatch.setattr(mod.httpx,'AsyncClient',FakeClient)
+    r=c.post('/api/chat',json={'query':'推荐VC'})
+    assert r.status_code==200 and r.json()['mode']=='rules'
+    assert '回退' in r.json()['warning']

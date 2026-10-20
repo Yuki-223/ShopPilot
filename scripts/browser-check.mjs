@@ -1,0 +1,29 @@
+import assert from 'node:assert/strict';
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE||'playwright-core');
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_EXECUTABLE||undefined,args:['--no-sandbox','--disable-gpu','--disable-dev-shm-usage'],headless:true});
+const page=await browser.newPage({viewport:{width:1360,height:1000}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.goto(process.env.SHOP_SMOKE_URL||'http://127.0.0.1:8012');
+if(process.env.SHOP_QA_FONT_DIR){
+ const {readFileSync}=await import('node:fs');const {resolve}=await import('node:path');const dir=process.env.SHOP_QA_FONT_DIR;
+ let css=readFileSync(resolve(dir,'400.css'),'utf8');
+ css=css.replace(/url\(\.\/([^)]*)\)/g,(_,file)=>'url(data:font/woff2;base64,'+readFileSync(resolve(dir,file)).toString('base64')+')');
+ await page.addStyleTag({content:css+' :root{font-family:"Noto Sans SC",Arial,sans-serif}'});await page.evaluate(()=>document.fonts.ready);
+}
+await page.locator('.product').first().waitFor();
+assert.equal(await page.locator('.product').count(),12);console.log('home cards: 12');
+if(process.env.SHOP_SCREENSHOTS)await page.screenshot({path:process.env.SHOP_SCREENSHOTS+'/home.png',fullPage:true});
+await page.locator('#auth-button').click();await page.locator('[name=username]').fill('ui_user');await page.locator('[name=password]').fill('UI-test-password-123');await page.locator('button[value=login]').click();await page.waitForFunction(()=>!document.querySelector('#dialog').open);
+await page.locator('.product [data-detail]').first().click();await page.locator('[data-add]').click();await page.getByRole('button',{name:'购物车',exact:true}).click();await page.locator('#checkout').click();await page.locator('[data-cancel]').first().waitFor();await page.locator('[data-cancel]').first().click();await page.getByText('已取消',{exact:false}).first().waitFor();
+await page.getByRole('button',{name:'✦ AI 导购',exact:true}).click();await page.locator('#chat-query').fill('推荐100元以内的VC，不要滑石粉');await page.locator('#chat-form button').click();await page.locator('.bubble.assistant').waitFor();assert.equal(await page.locator('.chat-body .product').count(),1);console.log('chat products: 1');if(process.env.SHOP_SCREENSHOTS)await page.screenshot({path:process.env.SHOP_SCREENSHOTS+'/chat.png',fullPage:true});
+await page.locator('[data-drop="budget"]').click();await page.waitForFunction(()=>document.querySelectorAll('.bubble.assistant').length===2);
+await page.locator('[data-drop="exclude:滑石粉"]').click();await page.waitForFunction(()=>document.querySelectorAll('.bubble.assistant').length===3);
+assert.equal(await page.locator('#condition-chips button').count(),0);
+await page.getByRole('button',{name:'商品商城',exact:true}).click();await page.locator('#keyword').fill('维生素');await page.locator('#search button').click();await page.waitForFunction(()=>document.querySelectorAll('.product').length===3);
+await page.locator('[data-select]').nth(0).check();await page.locator('[data-select]').nth(1).check();await page.locator('#compare').click();await page.getByRole('columnheader',{name:'对比项',exact:true}).waitFor();await page.getByRole('rowheader',{name:'每克标签VC成本（元）',exact:true}).waitFor();
+if(process.env.SHOP_SCREENSHOTS)await page.screenshot({path:process.env.SHOP_SCREENSHOTS+'/comparison.png',fullPage:true});
+await page.getByRole('button',{name:'意见反馈',exact:true}).click();await page.locator('#new-feedback').click();await page.locator('[name=content]').fill('浏览器验收：请核实商品标签资料');await page.locator('#feedback-form button').click();await page.waitForFunction(()=>!document.querySelector('#dialog').open);await page.getByText('待处理',{exact:true}).first().waitFor();
+await page.locator('#auth-button').click();await page.locator('#auth-button').click();await page.locator('[name=username]').fill('ui_admin');await page.locator('[name=password]').fill('UI-test-password-123');await page.locator('button[value=login]').click();await page.waitForFunction(()=>!document.querySelector('#dialog').open);await page.locator('#admin-nav').click();await page.locator('#new-product').waitFor();assert.equal(await page.locator('tbody tr').count(),20);console.log('admin pagination: 20 rows');if(process.env.SHOP_SCREENSHOTS)await page.screenshot({path:process.env.SHOP_SCREENSHOTS+'/admin.png',fullPage:true});
+await page.getByRole('button',{name:'分类管理',exact:true}).click();await page.locator('#add-category').click();await page.locator('[name=name]').fill('UI验收分类');await page.locator('#category-form button').click();await page.waitForFunction(()=>!document.querySelector('#dialog').open);await page.getByText('UI验收分类',{exact:true}).waitFor();
+await page.locator('#admin-nav').click();await page.getByRole('button',{name:'反馈处理',exact:true}).click();await page.locator('[data-resolve]').first().click();await page.locator('[name=status]').selectOption('resolved');await page.locator('[name=reply]').fill('已验证反馈闭环');await page.locator('#resolve-form button').click();await page.waitForFunction(()=>!document.querySelector('#dialog').open);await page.getByText('已解决',{exact:true}).first().waitFor();
+await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'商品商城',exact:true}).click();await page.locator('.product').first().waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);console.log('390px mobile: no overflow');if(process.env.SHOP_SCREENSHOTS)await page.screenshot({path:process.env.SHOP_SCREENSHOTS+'/mobile.png',fullPage:true});await page.setViewportSize({width:320,height:720});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);console.log('320px mobile: no overflow');console.log('page errors',errors);if(errors.length)throw new Error(errors.join(';'));await browser.close();

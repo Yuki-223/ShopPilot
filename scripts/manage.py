@@ -61,32 +61,23 @@ def main():
         print('Admin created.')
     else:
         import gzip
-        from decimal import Decimal, InvalidOperation
+        from backend.importing import convert_record,import_record
         path=Path(args.file)
         opener=gzip.open if path.suffix=='.gz' else open
         with opener(path,'rt',encoding='utf-8') as f:
-            if path.name.endswith(('.jsonl','.jsonl.gz')): records=(json.loads(line) for line in f if line.strip())
+            if path.name.endswith(('.jsonl','.jsonl.gz')):
+                records=(json.loads(line) for line in f if line.strip())
             else:
                 data=json.load(f); records=data['products'] if isinstance(data,dict) else data
             validated=[]; skipped=0
-            for index,r in enumerate(records):
+            for record in records:
                 if len(validated)>=max(1,min(args.limit,5000)): break
-                if args.format=='normalized': p=Product(**r)
-                else:
-                    value=r.get('price')
-                    try: cents=int((Decimal(str(value))*100).quantize(Decimal('1')))
-                    except (InvalidOperation,ValueError,TypeError): skipped+=1; continue
-                    images=r.get('images') or []
-                    image=r.get('thumbnail','')
-                    if not image and images:
-                        first=images[0]; image=first if isinstance(first,str) else first.get('large') or first.get('hi_res') or ''
-                    description=r.get('description','')
-                    if isinstance(description,list): description='\n'.join(str(x) for x in description)
-                    # Source currency is preserved; no silent USD -> CNY conversion.
-                    details=dict(r.get('details') or {}); details['currency']='USD'; details['original_price']=value
-                    p=Product(title=str(r.get('title',''))[:200],category=str(r.get('main_category') or r.get('category') or '未分类')[:50],brand=str(r.get('brand') or r.get('store') or '')[:100],price_cents=cents,stock=0,description=description[:12000],image=image,specs=details,source=args.format,status='inactive')
-                validated.append(p)
+                p,key=convert_record(record,args.format)
+                if p is None: skipped+=1; continue
+                validated.append((p,key))
+            imported=0
             with db() as c:
-                for p in validated: write_product(c,p,secrets.token_hex(12))
-        print(f'Imported {len(validated)} products; skipped {skipped} missing prices. External datasets start inactive; verify currency/stock before publication.')
+                c.execute('BEGIN IMMEDIATE')
+                for p,key in validated: imported+=int(import_record(c,p,key))
+        print(f'Imported {imported}; duplicate {len(validated)-imported}; missing/invalid price {skipped}. External datasets start inactive; verify currency/stock before publication.')
 if __name__=='__main__': main()

@@ -1,0 +1,7 @@
+{
+  "name": "shoppilot-checks",
+  "private": true,
+  "type": "module",
+  "scripts": {"check": "node --check web/app.js && node --check web/management.js && node --check web/product-art.js", "test:browser": "python -m scripts.browser_smoke"},
+  "devDependencies": {"playwright-core": "1.64.1"}
+}

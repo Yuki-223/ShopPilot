@@ -8,11 +8,12 @@
 
 - 注册、登录、退出；PBKDF2 密码哈希、服务端过期会话、HttpOnly Cookie、基础登录限流。
 - 公开商城：分类、搜索、价格排序、分页、详情；绿色商城视觉。
-- 管理员：商品新增/查看/编辑/软下架、批量 JSON 导入、数据概览、操作审计。
+- 管理员：商品新增/查看/编辑/软下架、搜索分页、批量 JSON 导入、分类维护、用户启停、反馈处理、数据概览和操作审计。
 - 用户隔离的收藏、购物对象档案与偏好、购物车、订单、导购历史。
 - 模拟订单：事务内校验库存与上架状态，保存下单价格快照，扣库存；取消仅执行一次并恢复库存。
 - 独立 Chat：从商城按钮进入，从商品详情或多选商品带入上下文；持久化预算/排除条件，支持“去掉预算”。
 - 配料未知不会判为满足排除条件。长期偏好手动维护，本次预算不会自动写入档案。
+- 结构化商品对比与标签 VC 每克成本计算；可移除预算、排除条件（不修改长期偏好）。
 - 可选 OpenAI 兼容模型解释候选；失败回退规则筛选，价格与库存仍由服务端读取。
 - JSON / JSONL / JSONL.GZ 数据导入，支持规范商品、DummyJSON 和 Amazon 2023 metadata。
 
@@ -54,7 +55,7 @@ python -m scripts.manage import path/to/products.json --format dummyjson --limit
 python -m scripts.manage import path/to/meta_Category.jsonl.gz --format amazon2023 --limit 500
 ```
 
-外部数据集导入时下架保存，库存为 0；保留原始 USD 币种，不伪装为人民币。管理员核实价格、币种、库存和资料后才能上架。此命令不负责下载数据。重复导入当前会新增记录，需人工避免重复，后续应加入来源 ID 去重。
+外部数据集导入时下架保存，库存为 0；保留原始 USD 币种，不伪装为人民币。管理员核实价格、币种、库存和资料后才能上架。此命令不负责下载数据。按来源 ID / 来源链接去重；没有来源键的规范记录按完整内容去重。已有来源记录会跳过，不覆盖管理员维护后的资料。没有来源键且内容改变的记录仍可能重复，需要人工核查。
 
 - Amazon 2023：https://amazon-reviews-2023.github.io/ — 选 meta 文件，按来源条款使用、引用；不需下载全部评论。
 - DummyJSON：https://dummyjson.com/docs/products — 测试/原型数据，不当成实时报价。
@@ -65,6 +66,8 @@ python -m scripts.manage import path/to/meta_Category.jsonl.gz --format amazon20
 ## 结构
 
 - `backend/app.py`：API、SQLite 业务、账号权限、规则导购及模型适配。
+- `backend/management.py`：分类、用户状态、反馈管理。
+- `backend/comparison.py`、`backend/importing.py`：确定性对比与来源去重。
 - `web/`：同源商城、管理页面、独立 Chat。
 - `scripts/manage.py`：演示数据、管理员创建、数据集转换导入。
 - `tests/`：权限、数据隔离、订单事务、约束筛选、导入校验。
@@ -75,3 +78,15 @@ python -m scripts.manage import path/to/meta_Category.jsonl.gz --format amazon20
 本初版在独立目录重新实现，未复制原仓库的源码、商品数据、奖项或作者身份。交互方向来自需求讨论；原项目保留于原仓库且未修改。原有 React Chat、混合 RAG、语音、图片检索尚未迁移，不能据此声称已具有这些能力。
 
 毕业设计最终是否合格取决于学校要求、导师确认、个人贡献、真实数据与评测，以及本人能够解释实现。本项目仅提供可验证的起点。
+
+## 浏览器验收
+
+```bash
+npm ci
+npx playwright-core install --with-deps chromium
+python -m scripts.browser_smoke
+```
+
+浏览器验收自行创建临时数据库和测试账号、启动临时端口，结束后清理；不会访问本机正式数据库。覆盖商城浏览、登录、加购下单取消、条件移除、结构化对比、反馈回复、分类新增和后台分页。另检查390px与320px宽度无横向溢出。
+
+可通过 `CHROMIUM_EXECUTABLE` 使用已有 Chromium，`SHOP_SCREENSHOTS` 指定内部验收截图目录。所有测试密码只用于临时账号，不是系统默认密码。
