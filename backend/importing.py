@@ -3,6 +3,7 @@ import hashlib
 import json
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from .app import Product, write_product
+from .provenance import valid_time
 
 
 def convert_record(record,source):
@@ -22,10 +23,18 @@ def convert_record(record,source):
     description=record.get('description') or ''
     if isinstance(description,list): description='\n'.join(str(x) for x in description)
     details=dict(record.get('details') or {})
-    details.update(currency='USD',original_price=raw_price)
+    details.update(currency='USD',original_price=raw_price,original_currency='USD')
+    metadata=record.get('_shoppilot_meta') or {}
+    details['_provenance']={'dataset_version':'2023' if source=='amazon2023' else 'test-api',
+        'fetched_at':valid_time(metadata.get('fetched_at')),'source_updated_at':None,
+        'price_checked_at':None,'review_status':'unreviewed','dataset_url':metadata.get('dataset_url','')}
     key=str(record.get('parent_asin') or record.get('asin') or record.get('id') or hashlib.sha256(json.dumps(record,sort_keys=True,ensure_ascii=False).encode()).hexdigest())
     details['source_id']=key
-    product=Product(title=str(record.get('title',''))[:200],category=str(record.get('main_category') or record.get('category') or '未分类')[:50],brand=str(record.get('brand') or record.get('store') or '')[:100],price_cents=cents,stock=0,description=str(description)[:12000],image=image,specs=details,source=source,status='inactive')
+    if record.get('features'):
+        description+='\n'+'\n'.join(str(x) for x in record['features'])
+    if 'meta_Health_and_Household.' in str(metadata.get('dataset_url','')): metadata={**metadata,'category':'健康日用'}
+    source_url='https://www.amazon.com/dp/'+key if source=='amazon2023' and len(key)==10 and key.isalnum() else ''
+    product=Product(title=str(record.get('title',''))[:200],category=str(metadata.get('category') or record.get('main_category') or record.get('category') or '未分类')[:50],brand=str(record.get('brand') or record.get('store') or '')[:100],price_cents=cents,stock=0,description=str(description)[:12000],image=image,specs=details,source=source,source_url=source_url,status='inactive')
     return product,key
 
 

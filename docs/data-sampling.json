@@ -1,0 +1,111 @@
+{
+  "description": "First 100 valid priced records from each of six official historical files; not a randomized or representative evaluation dataset. Product payloads cached locally, not redistributed in Git.",
+  "records_before_dedup": 600,
+  "unique_imported": 600,
+  "by_category": [
+    {
+      "category": "健康日用",
+      "status": "inactive",
+      "count": 100
+    },
+    {
+      "category": "家居生活",
+      "status": "inactive",
+      "count": 100
+    },
+    {
+      "category": "数码电子",
+      "status": "inactive",
+      "count": 100
+    },
+    {
+      "category": "服饰运动",
+      "status": "inactive",
+      "count": 100
+    },
+    {
+      "category": "美妆个护",
+      "status": "inactive",
+      "count": 100
+    },
+    {
+      "category": "食品饮料",
+      "status": "inactive",
+      "count": 100
+    }
+  ],
+  "files": [
+    {
+      "source": "amazon2023",
+      "category": "All_Beauty",
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_All_Beauty.jsonl.gz",
+      "fetched_at": 1792508615.558613,
+      "records": 100,
+      "scanned": 489,
+      "skipped_missing_price": 389,
+      "sha256": "a8380489aaf6446a6231979b5eb6fd9d41ceeabd6f57cfd0e1ec98d6225afcb8",
+      "sample_method": "first_valid_priced_records",
+      "note": "历史/测试数据；下载时间不是报价核验时间。导入后下架，需管理员核实币种、价格与资料。"
+    },
+    {
+      "source": "amazon2023",
+      "category": "Clothing_Shoes_and_Jewelry",
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Clothing_Shoes_and_Jewelry.jsonl.gz",
+      "fetched_at": 1792508702.6604311,
+      "records": 100,
+      "scanned": 166,
+      "skipped_missing_price": 66,
+      "sha256": "5cd566fa1b8baaa97587198df338636ba5ec327250910fcffdf87b061d5a8d19",
+      "sample_method": "first_valid_priced_records",
+      "note": "历史/测试数据；下载时间不是报价核验时间。导入后下架，需管理员核实币种、价格与资料。"
+    },
+    {
+      "source": "amazon2023",
+      "category": "Electronics",
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Electronics.jsonl.gz",
+      "fetched_at": 1792508702.638179,
+      "records": 100,
+      "scanned": 232,
+      "skipped_missing_price": 132,
+      "sha256": "e2375167076e7914f22e5e7e07c1c1863853a49bc82d847329f276d22bc3e4d6",
+      "sample_method": "first_valid_priced_records",
+      "note": "历史/测试数据；下载时间不是报价核验时间。导入后下架，需管理员核实币种、价格与资料。"
+    },
+    {
+      "source": "amazon2023",
+      "category": "Grocery_and_Gourmet_Food",
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Grocery_and_Gourmet_Food.jsonl.gz",
+      "fetched_at": 1792508702.6533015,
+      "records": 100,
+      "scanned": 195,
+      "skipped_missing_price": 95,
+      "sha256": "9e6706034f37362b70d31f5ebfc4db36829237f84178999521f214aa34b2b5f7",
+      "sample_method": "first_valid_priced_records",
+      "note": "历史/测试数据；下载时间不是报价核验时间。导入后下架，需管理员核实币种、价格与资料。"
+    },
+    {
+      "source": "amazon2023",
+      "category": "Health_and_Household",
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Health_and_Household.jsonl.gz",
+      "fetched_at": 1792508702.648254,
+      "records": 100,
+      "scanned": 170,
+      "skipped_missing_price": 70,
+      "sha256": "bfd244729cf694519f8652ea8f978587e04eba9bf6d722a1062312cb4197ecb6",
+      "sample_method": "first_valid_priced_records",
+      "note": "历史/测试数据；下载时间不是报价核验时间。导入后下架，需管理员核实币种、价格与资料。"
+    },
+    {
+      "source": "amazon2023",
+      "category": "Home_and_Kitchen",
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Home_and_Kitchen.jsonl.gz",
+      "fetched_at": 1792508702.6512825,
+      "records": 100,
+      "scanned": 184,
+      "skipped_missing_price": 84,
+      "sha256": "a24c3ead38088d4dd1f6d7fb28670e9d79730341464c985dc8204628268f165b",
+      "sample_method": "first_valid_priced_records",
+      "note": "历史/测试数据；下载时间不是报价核验时间。导入后下架，需管理员核实币种、价格与资料。"
+    }
+  ]
+}

@@ -250,3 +250,76 @@ def test_model_malformed_response_falls_back(setup,monkeypatch):
     r=c.post('/api/chat',json={'query':'推荐VC'})
     assert r.status_code==200 and r.json()['mode']=='rules'
     assert '回退' in r.json()['warning']
+
+def test_historical_product_review_preserves_original_and_records_snapshot(setup):
+    from backend.importing import convert_record,import_record
+    c=setup;login(c,role='admin')
+    p,key=convert_record({'parent_asin':'B0TEST0001','title':'Historical Headphones','price':12.34,'main_category':'数码电子','_shoppilot_meta':{'dataset_version':'2023','fetched_at':mod.time.time(),'dataset_url':'https://example.test/dataset'}},'amazon2023')
+    with mod.db() as db: import_record(db,p,key)
+    item=c.get('/api/admin/products?source=amazon2023').json()['items'][0];pid=item['id']
+    assert item['status']=='inactive' and item['quality']['price_state']=='unverified'
+    assert item['specs']['original_price']==12.34 and item['quality']['price_checked_at'] is None
+    assert item['quality']['source_updated_at'] is None
+    assert c.get('/api/products/'+pid).status_code==404
+    publish={'price_cents':8000,'stock':5,'source_url':'https://example.test/headphones','note':'核对同规格人民币售价，仅为测试'}
+    assert c.post('/api/admin/products/'+pid+'/review',json=publish).status_code==200
+    item=c.get('/api/products/'+pid).json()
+    assert item['specs']['currency']=='CNY' and item['specs']['original_currency']=='USD'
+    assert item['price_cents']==8000 and item['quality']['price_state']=='checked'
+    assert item['specs']['original_price']==12.34
+    h=c.get('/api/products/'+pid+'/price-history').json()
+    assert h['items'][0]['price_cents']==8000
+    # Changing the reviewed price requires review again and must not overwrite snapshots.
+    req={k:item[k] for k in mod.Product.model_fields};req['price_cents']=9000
+    assert c.put('/api/admin/products/'+pid,json=req).status_code==200
+    assert c.get('/api/products/'+pid).status_code==404
+    admin_item=c.get('/api/admin/products?q=Historical').json()['items'][0]
+    assert admin_item['quality']['price_state']=='unverified'
+    assert c.post('/api/admin/products/'+pid+'/review',json={**publish,'price_cents':9000}).status_code==200
+    assert [x['price_cents'] for x in c.get('/api/products/'+pid+'/price-history').json()['items']]==[9000,8000]
+
+
+def test_cannot_bypass_import_review_by_editing_metadata(setup):
+    from backend.importing import convert_record,import_record
+    c=setup;login(c,role='admin')
+    p,key=convert_record({'id':1,'title':'Sample','price':10,'category':'test'},'dummyjson')
+    with mod.db() as db: import_record(db,p,key)
+    item=c.get('/api/admin/products?source=dummyjson').json()['items'][0];pid=item['id']
+    req=p.model_dump();req['specs']={**req['specs'],'currency':'CNY'};req['status']='active'
+    assert c.put('/api/admin/products/'+pid,json=req).status_code==409
+    req['status']='inactive';req['specs']['source_id']='forged-id'
+    assert c.put('/api/admin/products/'+pid,json=req).status_code==409
+    req['specs']['source_id']=p.specs['source_id']
+    req['status']='inactive';req['specs']['_provenance']={'review_status':'reviewed','price_checked_at':mod.time.time()}
+    assert c.put('/api/admin/products/'+pid,json=req).status_code==409
+    c.cookies.clear();login(c,'bob')
+    assert c.post('/api/admin/products/'+pid+'/review',json={'price_cents':100,'stock':1,'source_url':'https://example.test/p','note':'尝试核验，权限不足'}).status_code==403
+
+
+def test_provenance_staleness_and_unknown_timestamp():
+    from backend.provenance import quality
+    now=mod.time.time()
+    p={'source':'amazon2023','specs':{'_provenance':{'fetched_at':now,'price_checked_at':now-8*86400}},'ingredients':None,'source_url':'https://example.test'}
+    q=quality(p,now)
+    assert q['price_state']=='stale' and q['source_updated_at'] is None
+    p['specs']['_provenance']['price_checked_at']=None
+    assert quality(p,now)['price_state']=='unverified'
+    p['source']='demo'
+    assert quality(p,now)['price_state']=='demo'
+
+
+def test_bilingual_keyword_matches_reviewed_english_products(setup):
+    c=setup;login(c,role='admin')
+    pid=c.post('/api/admin/products',json={'title':'Wireless Bluetooth Headphones','category':'数码电子','price_cents':5000,'stock':1}).json()['id']
+    r=c.post('/api/chat',json={'query':'推荐100元以内的耳机'}).json()
+    assert [x['id'] for x in r['products']]==[pid]
+    assert r['products'][0]['quality']['price_state']=='unverified'
+    assert '价格' in r['answer']
+
+def test_manifest_checksum_mismatch_rejects_import(setup,tmp_path,monkeypatch):
+    from scripts.manage import main
+    p=tmp_path/'sample.jsonl';p.write_text(json.dumps({'title':'Changed','price':10})+'\n')
+    p.with_suffix('.jsonl.manifest.json').write_text(json.dumps({'source':'amazon2023','sha256':'0'*64}))
+    monkeypatch.setattr('sys.argv',['manage','import',str(p),'--format','amazon2023'])
+    with pytest.raises(SystemExit): main()
+    with mod.db() as db: assert db.execute("SELECT COUNT(*) FROM products WHERE source='amazon2023'").fetchone()[0]==0

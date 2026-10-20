@@ -5,9 +5,39 @@ import sqlite3
 import time
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from .app import admin, audit, db, user
+from .app import Product,admin,audit,db,user,serialize,write_product,product
 
 router=APIRouter(prefix='/api')
+
+class PriceReview(BaseModel):
+    price_cents: int=Field(ge=0,le=100000000)
+    stock: int=Field(ge=0,le=1000000)
+    source_url: str=Field(min_length=10,max_length=1500,pattern=r'^https://[^\s]+$')
+    note: str=Field(min_length=5,max_length=2000)
+
+@router.post('/admin/products/{pid}/review')
+def review_product(pid: str,req: PriceReview,u=Depends(admin)):
+    checked=time.time()
+    with db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        row=c.execute('SELECT * FROM products WHERE id=?',(pid,)).fetchone()
+        if not row: raise HTTPException(404,'商品不存在')
+        p=serialize(row);p.pop('quality',None);p.pop('id');p.pop('updated')
+        specs=p['specs'];meta=specs.get('_provenance',{})
+        specs['_provenance']={**meta,'review_status':'reviewed','price_checked_at':checked,'review_note':req.note}
+        specs['currency']='CNY'
+        p.update(price_cents=req.price_cents,stock=req.stock,source_url=req.source_url,status='active',specs=specs)
+        write_product(c,Product(**p),pid)
+        c.execute('INSERT INTO price_checks(product_id,price_cents,checked_at,note,source_url,actor) VALUES(?,?,?,?,?,?)',(pid,req.price_cents,checked,req.note,req.source_url,u['id']))
+        audit(c,u,'review_product',pid)
+    return {'ok':True,'price_checked_at':checked}
+
+@router.get('/products/{pid}/price-history')
+def price_history(pid: str):
+    product(pid)
+    with db() as c:
+        rows=c.execute('SELECT price_cents,checked_at,note,source_url FROM price_checks WHERE product_id=? ORDER BY checked_at DESC,id DESC LIMIT 30',(pid,))
+        return {'items':[dict(r) for r in rows],'note':'仅记录管理员手动核验的人民币报价，不代表平台完整历史价格。'}
 
 class Category(BaseModel):
     name: str=Field(min_length=1,max_length=50,pattern=r'^\S(?:.*\S)?$')

@@ -63,6 +63,14 @@ def main():
         import gzip
         from backend.importing import convert_record,import_record
         path=Path(args.file)
+        manifest_path=path.with_suffix(path.suffix+'.manifest.json')
+        if manifest_path.exists():
+            import hashlib
+            manifest=json.loads(manifest_path.read_text(encoding='utf-8'))
+            with path.open('rb') as sample_file:
+                actual=hashlib.file_digest(sample_file,'sha256').hexdigest()
+            if manifest.get('sha256')!=actual: parser.error('Sample checksum mismatch; file may have changed')
+            if manifest.get('source')!=args.format: parser.error('Manifest source does not match --format')
         opener=gzip.open if path.suffix=='.gz' else open
         with opener(path,'rt',encoding='utf-8') as f:
             if path.name.endswith(('.jsonl','.jsonl.gz')):

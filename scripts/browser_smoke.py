@@ -17,6 +17,10 @@ def main():
 from scripts.manage import seed
 from backend.app import db,hash_password
 seed()
+from backend.importing import convert_record,import_record
+with db() as c:
+    sample,key=convert_record({'parent_asin':'B0TEST0001','title':'QA Historical Headphones','price':12.34,'main_category':'数码电子'},'amazon2023')
+    import_record(c,sample,key)
 with db() as c:
     for uid,name,role in [('ui-admin','ui_admin','admin'),('ui-user','ui_user','user')]:
         c.execute('INSERT INTO users(id,username,password,role) VALUES(?,?,?,?)',(uid,name,hash_password('UI-test-password-123'),role))
