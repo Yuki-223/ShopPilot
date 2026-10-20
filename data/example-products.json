@@ -1,0 +1,14 @@
+[
+  {
+    "title": "示例手动录入商品",
+    "category": "家居生活",
+    "brand": "教学示例",
+    "price_cents": 3900,
+    "stock": 10,
+    "description": "虚构教学资料，仅演示导入格式。",
+    "specs": {"容量": "350ml", "currency": "CNY"},
+    "ingredients": null,
+    "source": "demo",
+    "status": "active"
+  }
+]
